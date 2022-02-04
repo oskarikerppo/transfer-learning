@@ -1,0 +1,143 @@
+
+tfds.list_builders()
+- ???
+
+Voisi kertoa valitusta datasetistä vähän enemmän
+
+base_model = tf.keras.applications.efficientnet.EfficientNetB0(
+- vois kertoa mitä parametrit tekee (+ API link)
+
+
+Ensin ladattiin datasetti näin
+
+	split=['train[:15%]', 'train[15%:30%]', 'train[30%:100%]'],
+
+ja sitten heti perään näin
+
+	split=['train[:80%]', 'train[80%:90%]', 'train[90%:]'],
+
+Vaikea nähdä tässä kahteen kertaan lataamisessa järkeä.
+
+--------
+
+from tensorflow.keras.layers import RandomFlip, RandomRotation, Resizing
+...
+
+Kerro mitä koodiboksissa tapahtuu ja miksi
+
+data_augmentation = tf.keras.Sequential([
+  RandomFlip("horizontal_and_vertical"),
+  RandomRotation(1, fill_mode="constant"),
+])
+- mitä nämä tekevät
+- miten päädyit juuri näihin, oliko muita joita voisi harkita
+- onko muunnos "classification invariant"?
+
+
+tf.keras.layers.Resizing(
+    height, width, interpolation='bilinear', crop_to_aspect_ratio=False,
+    **kwargs
+)
+- sun kuvat saattaa olla neliön muotoisia
+- mutta yleisessä tapauksessa ykeensä kannattaa pistää toi 
+	crop_to_aspect_ratio = True
+  niin kuvasuhde ei muutu
+
+https://www.tensorflow.org/api_docs/python/tf/keras/layers/Resizing
+
+- noita API -linkkejä ihan mielellään saa laitella sinne tekstiin
+   niin mun ei tarvi guuglella hakea niitä
+
+AUTOTUNE = tf.data.AUTOTUNE
+- mikähän tämäkin on
+
+ds = ds.map(lambda x, y: (resize_and_rescale(x), y), 
+- mikähän tämäkin on
+
+  augmented_image = data_augmentation(image)
+  ax = plt.subplot(3, 3, i + 1)
+  plt.imshow(augmented_image[0])
+
+- tää oli hyvä havainnollistus
+
+train_ds = prepare(train_ds, shuffle=True, augment=True)
+###huom
+- jos dataa tuntuu olevan liian vähän,
+  niin tähän train data putkeen kannattaa laittaa .repeat niin saa lisää
+- kokeile esim. .repeat(5)
+
+x = BatchNormalization()(x)
+  x = Dense(1024, activation='relu', kernel_regularizer='l2')(x)
+  x = Dense(1024, activation='relu', kernel_regularizer='l2')(x)
+  x = Dropout(0.1)(x)
+  
+### näyttää hiton isolta
+	Trainable params: 2,364,929 (!)
+-- vertaa tuota eff net param määrään (4,052,131)
+-- ei pitäs tuntua mielekkäältä
+
+-- erit. jälkimmäinen layer vois olla jotain 128 tai 64
+-- ja ensimmäinenkin jotain 256 128
+- mikä base modelin output koko?
+-- näyttäs olevan 1280
+
+### muutin omissa testeissä noi layerit kokoihin 256 ja 64
+--> Trainable params: 347,009
+-- colab:in rupu-GPU:lla meni aikaa n. 160s (< 3 min) per epoch
+- sain tällä pienemmällä mallilla tarkkuuden 95% tienoille samoilla opetusmäärillä
+
+
+create_model
+- tässä tulee nyt samantien käytettyä batch norm, dropout ja L2 reg
+-- ajatus oli kattoa tuloksia ilman ja kanssa
+-- eli onko niistä tässä tapauksessa mitään hyötyä
+
+checkpoint and early stopping callbacks
+- tuntuu järkevältä
+- tässä siis ylläpidetään vaan yhtä checkpointtia
+- jos haluais useamman niin tiedostonimeä pitäs vaihtaa
+-- eli esim. epoch counter osaksi nimeä muuttujan avulla
+
+epochs=20, / fit
+- voi olla ok mutta periaatteessa sen early stoppingin pitäs hoitaa
+
+
+model.evaluate(val_ds)
+### TESTIDATALLA eikä validointidatalla ...
+- just tämän takia se test data ylipäätään on olemassa
+
+Plot history
+- tulosta voisi jotenkin kommentoida
+- mitä käppyröistä näkyy
+
+Fine-tuning the model
+- Training took very long
+-- luulen että sillä ylisuurella päätösosalla on tähän vaikutusta
+-- myös sillä, paljonko availee kerralla (ihan muutama layer, voi kokeilla eri määriä)
+-- myös LR tosi pieneksi (kokeile eri arvoja)
+-- kannattaa tarkistaa summaryllä ennen opetusta, paljonko trainable params tuli lisää
+--- monilla on mennyt väärinpäin trainable/not
+
+### fine tuning
+- vois ainakin näyttää, millasella koodilla koitti
+- niin näkis onko siinä tehty jotain pieleen
+
+##restore-best_weights
+- muistaakseni tämä kuluttaa rankasti muistia / jätä pois, voi nopeuttaa suoritusta
+
+I decided to train the whole model at once
+- aika rankka päätös
+- ainakin LR tosi pieneksi sitten
+
+
+callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
+ cp_callback, lr_callback]
+### lr_callback + Adam on heikko yhdistelmä
+- Adam säätää itse LR
+- kokeile SGD:n (+ momentum) kanssa jos haluat nähdä onko LR säädöllä vaikutusta
+
+Examples of erroneous predictions
+- tää oli hyvä havainnollistus
+- pystyykö kuvista arvailemaan, millaisissa tapauksissa verkko toimii huonosti
+-- jos pystyy, niin olisiko hyötyä (keinotekoisesti) lisätä tällaisten tapausten
+   määrää opetusdatassa
