@@ -1,2 +1,0 @@
-model_checkpoint_path: "transfer-net-finetuned-2.ckpt"
-all_model_checkpoint_paths: "transfer-net-finetuned-2.ckpt"
